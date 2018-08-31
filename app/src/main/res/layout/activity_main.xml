@@ -1,69 +1,69 @@
 <?xml version="1.0" encoding="utf-8"?>
 <android.support.constraint.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
 
-    xmlns:app="http://schemas.android.com/apk/res-auto"
-    xmlns:tools="http://schemas.android.com/tools"
-    android:layout_width="match_parent"
-    android:layout_height="match_parent"
-    android:background="@color/blueBackground"
-    tools:context=".MainActivity">
+xmlns:app="http://schemas.android.com/apk/res-auto"
+xmlns:tools="http://schemas.android.com/tools"
+android:layout_width="match_parent"
+android:layout_height="match_parent"
+android:background="@color/blueBackground"
+tools:context=".MainActivity">
 
 
-    <LinearLayout
-        android:id="@+id/LinearLayout1"
-        android:layout_width="0dp"
-        android:layout_height="0dp"
-        android:gravity="center"
-        android:orientation="vertical"
-        app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="parent">
+<LinearLayout
+    android:id="@+id/LinearLayout1"
+    android:layout_width="0dp"
+    android:layout_height="0dp"
+    android:gravity="center"
+    android:orientation="vertical"
+    app:layout_constraintBottom_toBottomOf="parent"
+    app:layout_constraintEnd_toEndOf="parent"
+    app:layout_constraintStart_toStartOf="parent"
+    app:layout_constraintTop_toTopOf="parent">
 
 
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Portal"
-            android:textColor="#ffff" />
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Portal"
+        android:textColor="#ffff" />
 
-        <ImageView
-            android:id="@+id/imageView"
-            android:layout_width="140dp"
-            android:layout_height="140dp"
-            app:srcCompat="@mipmap/portal" />
+    <ImageView
+        android:id="@+id/imageView"
+        android:layout_width="140dp"
+        android:layout_height="140dp"
+        app:srcCompat="@mipmap/portal" />
 
-        <Space
-            android:layout_width="1dp"
-            android:layout_height="80dp" />
+    <Space
+        android:layout_width="1dp"
+        android:layout_height="80dp" />
 
-        <TextView
-            android:id="@+id/status"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Active"
-            android:textColor="#ffff"
-            android:textStyle="bold"
-            tools:layout_editor_absoluteX="162dp"
-            tools:layout_editor_absoluteY="397dp" />
+    <TextView
+        android:id="@+id/status"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Active"
+        android:textColor="#ffff"
+        android:textStyle="bold"
+        tools:layout_editor_absoluteX="162dp"
+        tools:layout_editor_absoluteY="397dp" />
 
-        <android.support.v7.widget.SwitchCompat
-            android:id="@+id/on_off_switch"
-            android:layout_width="wrap_content"
-            android:layout_height="38dp"
-            android:layout_alignParentRight="true"
-            android:checked="true"
-            android:theme="@style/SCBSwitch"
-            tools:layout_editor_absoluteX="151dp"
-            tools:layout_editor_absoluteY="414dp" />
+    <android.support.v7.widget.SwitchCompat
+        android:id="@+id/on_off_switch"
+        android:layout_width="wrap_content"
+        android:layout_height="38dp"
+        android:layout_alignParentRight="true"
+        android:checked="true"
+        android:theme="@style/SCBSwitch"
+        tools:layout_editor_absoluteX="151dp"
+        tools:layout_editor_absoluteY="414dp" />
 
-        <ListView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:id="@+id/listView"
-            android:layout_alignParentTop="true"
-            android:layout_centerHorizontal="true" />
+    <ListView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:id="@+id/listView"
+        android:layout_alignParentTop="true"
+        android:layout_centerHorizontal="true" />
 
-    </LinearLayout>
+</LinearLayout>
 
 </android.support.constraint.ConstraintLayout>

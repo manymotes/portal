@@ -2,9 +2,23 @@ package com.example.kmotes.portal;
 
 
 import android.Manifest;
+import android.bluetooth.BluetoothAdapter;
+import android.bluetooth.BluetoothDevice;
+import android.bluetooth.BluetoothGatt;
+import android.bluetooth.BluetoothGattCallback;
+import android.bluetooth.BluetoothGattCharacteristic;
+import android.bluetooth.BluetoothGattService;
+import android.bluetooth.BluetoothManager;
+import android.bluetooth.BluetoothProfile;
+import android.content.ComponentName;
+import android.content.Context;
 import android.content.DialogInterface;
+import android.content.Intent;
+import android.content.ServiceConnection;
 import android.content.pm.PackageManager;
 import android.os.Build;
+import android.os.Handler;
+import android.os.IBinder;
 import android.os.RemoteException;
 import android.support.annotation.RequiresApi;
 import android.support.v7.app.AlertDialog;
@@ -12,10 +26,15 @@ import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
 import android.support.v7.widget.SwitchCompat;
 import android.util.Log;
+import android.view.LayoutInflater;
+import android.view.View;
+import android.view.ViewGroup;
 import android.widget.ArrayAdapter;
+import android.widget.BaseAdapter;
 import android.widget.CompoundButton;
 import android.widget.ListView;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import org.altbeacon.beacon.Beacon;
 import org.altbeacon.beacon.BeaconConsumer;
@@ -24,24 +43,45 @@ import org.altbeacon.beacon.BeaconParser;
 import org.altbeacon.beacon.RangeNotifier;
 import org.altbeacon.beacon.Region;
 
+
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Iterator;
+import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 
 public class MainActivity extends AppCompatActivity implements BeaconConsumer {
 
     private static final String TAG = "BEACON_PROJECT";
+    private static final int REQUEST_ENABLE_BT = 1;
     private ArrayList<String> beaconList;
     private ListView beaconListView;
     private ArrayAdapter<String> adapter;
     private BeaconManager beaconManager;
     int count = 0;
+    private BluetoothAdapter mBluetoothAdapter;
+    private LeDeviceListAdapter mLeDeviceListAdapter;
+    private Handler mHandler;
+    private boolean mScanning = true;
+    // Stops scanning after 1 seconds.
+    private static final long SCAN_PERIOD = 500;
+    private BluetoothLeService mBluetoothLeService;
+    private ArrayList<BluetoothDevice> mLeDevices;
+    private String majorMinor;
+    private BluetoothGatt bluetoothGatt;
 
+
+
+    @RequiresApi(api = Build.VERSION_CODES.JELLY_BEAN_MR2)
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
+        mHandler = new Handler();
+        final BluetoothManager bluetoothManager =
+                (BluetoothManager) getSystemService(Context.BLUETOOTH_SERVICE);
+        mBluetoothAdapter = bluetoothManager.getAdapter();
 
         SwitchCompat onOffSwitch = findViewById(R.id.on_off_switch);
         onOffSwitch.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
@@ -49,11 +89,20 @@ public class MainActivity extends AppCompatActivity implements BeaconConsumer {
             @Override
             public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
                 Log.v("Switch State=", ""+isChecked);
-                if (isChecked) { ((TextView)findViewById(R.id.status)).setText("Active"); }
-                else { ((TextView)findViewById(R.id.status)).setText("Off"); }
+                if (isChecked) {
+                    ((TextView)findViewById(R.id.status)).setText("Active");
+
+                }
+                else {
+                    ((TextView)findViewById(R.id.status)).setText("Off");
+
+                }
             }
 
         });
+
+        mLeDeviceListAdapter = new LeDeviceListAdapter();
+
 
         //start beacon code
 
@@ -66,8 +115,8 @@ public class MainActivity extends AppCompatActivity implements BeaconConsumer {
         this.beaconManager.bind(this);
         beaconManager.setBackgroundScanPeriod(200);
         beaconManager.setForegroundScanPeriod(200);
-        beaconManager.setBackgroundBetweenScanPeriod(200);
-        beaconManager.setForegroundBetweenScanPeriod(200);
+        beaconManager.setBackgroundBetweenScanPeriod(300);
+        beaconManager.setForegroundBetweenScanPeriod(300);
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             if (this.checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
@@ -108,6 +157,7 @@ public class MainActivity extends AppCompatActivity implements BeaconConsumer {
     @Override
     public void onBeaconServiceConnect() {
         this.beaconManager.setRangeNotifier(new RangeNotifier() {
+            @RequiresApi(api = Build.VERSION_CODES.JELLY_BEAN_MR2)
             @Override
             public void didRangeBeaconsInRegion(Collection<Beacon> beacons, Region region) {
                 if (beacons.size() > 0) {
@@ -116,10 +166,11 @@ public class MainActivity extends AppCompatActivity implements BeaconConsumer {
                         Beacon tempBeacon = iterator.next();
                         if (tempBeacon.getId1().toString().equals("b9407f30-f5f8-466e-aff9-25556b57fd6e") || tempBeacon.getId1().toString().equals("b9407f30-f5f8-466e-aff9-25556b57fd6f")) {
                             //beaconList.add(tempBeacon.getId1().toString());
-                            if (tempBeacon.getDistance() < 1.9411248985355725)
+                            if (tempBeacon.getDistance() < 1.8411248985355725)
                             {
                                 count += 1;
                                 beaconList.add(0, "OPEN: " + count);
+                                writeToPi(tempBeacon.getId2().toString(), tempBeacon.getId3().toString());
                             }
                         }
                     }
@@ -138,7 +189,200 @@ public class MainActivity extends AppCompatActivity implements BeaconConsumer {
             e.printStackTrace();
         }
     }
+
+
+
+
+
+    @RequiresApi(api = Build.VERSION_CODES.JELLY_BEAN_MR2)
+    public void writeToPi(String major, String minor) {
+
+        major = intToBinary(Integer.valueOf(major), 4).toString();
+        minor = intToBinary(Integer.valueOf(minor), 4).toString();
+        majorMinor = "D304DBD9-6FDC-4BF3-A617-E015" + major + minor;
+      //final  UUID serviceUUID = UUID.fromString(majorMinor);
+     //   UUID characteristicUUID = UUID.fromString("5099CBC8-A71F-4292-8158-BF4F25AE9948");
+
+
+            scanLeDevice(true);
+
+
+
+     //end writeToPI
+    }
+
+    @RequiresApi(api = Build.VERSION_CODES.JELLY_BEAN_MR2)
+    private void scanLeDevice(final boolean enable) {
+
+        if (enable) {
+            // Stops scanning after a pre-defined scan period.
+            mHandler.postDelayed(new Runnable() {
+                @RequiresApi(api = Build.VERSION_CODES.JELLY_BEAN_MR2)
+                @Override
+                public void run() {
+                    mScanning = false;
+                    mBluetoothAdapter.stopLeScan(mLeScanCallback);
+                    invalidateOptionsMenu();
+                }
+            }, SCAN_PERIOD);
+
+            mScanning = true;
+            mBluetoothAdapter.startLeScan(mLeScanCallback);
+        } else {
+            mScanning = false;
+            mBluetoothAdapter.stopLeScan(mLeScanCallback);
+        }
+        invalidateOptionsMenu();
+    }
+
+
+    // Device scan callback.
+    private BluetoothAdapter.LeScanCallback mLeScanCallback =
+            new BluetoothAdapter.LeScanCallback() {
+
+                @Override
+                public void onLeScan(final BluetoothDevice device, int rssi, byte[] scanRecord) {
+                    runOnUiThread(new Runnable() {
+                        @RequiresApi(api = Build.VERSION_CODES.JELLY_BEAN_MR2)
+                        @Override
+                        public void run() {
+
+                                    mLeDeviceListAdapter.addDevice(device);
+                                    mLeDeviceListAdapter.notifyDataSetChanged();
+                                }
+
+
+                    });
+                }
+            };
+
+    // Adapter for holding devices found through scanning.
+    private class LeDeviceListAdapter extends BaseAdapter {
+
+        private LayoutInflater mInflator;
+
+        public LeDeviceListAdapter() {
+            super();
+            mLeDevices = new ArrayList<BluetoothDevice>();
+        }
+
+        @RequiresApi(api = Build.VERSION_CODES.JELLY_BEAN_MR2)
+        public void addDevice(final BluetoothDevice device) {
+            if(!mLeDevices.contains(device)) {
+                mLeDevices.add(device);
+                String name = device.getName();
+                //System.out.print(name);
+                if (device.getName() != null) {
+
+                    if (device.getName().equals("PORTAL")) {
+
+                        device.connectGatt(getApplicationContext(), true, mGattCallback);
+
+                    }
+                }
+            }
+        }
+
+        public BluetoothDevice getDevice(int position) {
+            return mLeDevices.get(position);
+        }
+
+        public void clear() {
+            mLeDevices.clear();
+        }
+
+        @Override
+        public int getCount() {
+            return mLeDevices.size();
+        }
+
+        @Override
+        public Object getItem(int i) {
+            return mLeDevices.get(i);
+        }
+
+        @Override
+        public long getItemId(int i) {
+            return i;
+        }
+
+        @Override
+        public View getView(int i, View view, ViewGroup viewGroup) {
+
+
+            return null;
+        }
+    }
+
+
+    private BluetoothGattCallback mGattCallback = new BluetoothGattCallback() {
+
+        @RequiresApi(api = Build.VERSION_CODES.JELLY_BEAN_MR2)
+        @Override
+        public void onConnectionStateChange(BluetoothGatt gatt, int status, int newState) {
+            //Connection established
+            if (status == BluetoothGatt.GATT_SUCCESS
+                    && newState == BluetoothProfile.STATE_CONNECTED) {
+
+                //Discover services
+                gatt.discoverServices();
+
+            } else if (status == BluetoothGatt.GATT_SUCCESS
+                    && newState == BluetoothProfile.STATE_DISCONNECTED) {
+
+                //Handle a disconnect event
+
+            }
+        }
+
+        @RequiresApi(api = Build.VERSION_CODES.JELLY_BEAN_MR2)
+        @Override
+        public void onServicesDiscovered(BluetoothGatt gatt, int status) {
+
+            //Now we can start reading/writing characteristics
+
+            BluetoothGattService service = gatt.getService(UUID.fromString(majorMinor));
+            if (service == null) {
+                System.out.println("service null"); return;
+            }
+
+            BluetoothGattCharacteristic characteristic = service.getCharacteristic(UUID.fromString("5099CBC8-A71F-4292-8158-BF4F25AE9948"));
+            characteristic.setWriteType(BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE);
+
+            if (characteristic == null) {
+                System.out.println("characteristic null"); return;
+            }
+            characteristic.setValue(" 0xAA");
+            gatt.writeCharacteristic(characteristic);
+            //System.out.println("Write Status: " + status2);
+
+
+        }
+    };
+
+
+    public static String intToBinary (int n, int numOfBits) {
+        String binary = "";
+        for(int i = 0; i < numOfBits; ++i, n/=2) {
+            switch (n % 2) {
+                case 0:
+                    binary = "0" + binary;
+                    break;
+                case 1:
+                    binary = "1" + binary;
+                    break;
+            }
+        }
+
+        return binary;
+    }
+
+
+
+
 }
+
+
 
 /*
 distnace notes
