@@ -31,7 +31,7 @@ tools:context=".MainActivity">
         android:id="@+id/imageView"
         android:layout_width="140dp"
         android:layout_height="140dp"
-        app:srcCompat="@mipmap/portal" />
+        app:srcCompat="@mipmap/portalbackground" />
 
     <Space
         android:layout_width="1dp"

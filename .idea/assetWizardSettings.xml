@@ -20,8 +20,8 @@
                                     <map>
                                       <entry key="backgroundLayerName" value="ic_launcher_background" />
                                       <entry key="foregroundImage" value="$USER_HOME$/Desktop/asdfasf.png" />
-                                      <entry key="foregroundLayerName" value="ic_launcher_foreground" />
-                                      <entry key="outputName" value="portal" />
+                                      <entry key="foregroundLayerName" value="portalbackground" />
+                                      <entry key="outputName" value="portalbackgronud" />
                                     </map>
                                   </option>
                                 </PersistentState>

@@ -53,6 +53,7 @@ import java.util.concurrent.TimeUnit;
 public class MainActivity extends AppCompatActivity implements BeaconConsumer {
 
     private static final String TAG = "BEACON_PROJECT";
+    public static final String mDeviceAddress = "B8:27:EB:42:D6:B5";
     private static final int REQUEST_ENABLE_BT = 1;
     private ArrayList<String> beaconList;
     private ListView beaconListView;
@@ -64,12 +65,36 @@ public class MainActivity extends AppCompatActivity implements BeaconConsumer {
     private Handler mHandler;
     private boolean mScanning = true;
     // Stops scanning after 1 seconds.
-    private static final long SCAN_PERIOD = 500;
+    private static final long SCAN_PERIOD = 700;
     private BluetoothLeService mBluetoothLeService;
     private ArrayList<BluetoothDevice> mLeDevices;
     private String majorMinor;
     private BluetoothGatt bluetoothGatt;
+    private Boolean onOff = true;
 
+
+
+    private final ServiceConnection mServiceConnection = new ServiceConnection() {
+
+
+
+        @RequiresApi(api = Build.VERSION_CODES.JELLY_BEAN_MR2)
+        @Override
+        public void onServiceConnected(ComponentName componentName, IBinder service) {
+            mBluetoothLeService = ((BluetoothLeService.LocalBinder) service).getService();
+            if (!mBluetoothLeService.initialize()) {
+                Log.e(TAG, "Unable to initialize Bluetooth");
+                finish();
+            }
+            // Automatically connects to the device upon successful start-up initialization.
+            mBluetoothLeService.connect(mDeviceAddress);
+        }
+
+        @Override
+        public void onServiceDisconnected(ComponentName componentName) {
+            mBluetoothLeService = null;
+        }
+    };
 
 
     @RequiresApi(api = Build.VERSION_CODES.JELLY_BEAN_MR2)
@@ -91,11 +116,11 @@ public class MainActivity extends AppCompatActivity implements BeaconConsumer {
                 Log.v("Switch State=", ""+isChecked);
                 if (isChecked) {
                     ((TextView)findViewById(R.id.status)).setText("Active");
-
+                    onOff = true;
                 }
                 else {
                     ((TextView)findViewById(R.id.status)).setText("Off");
-
+                    onOff = false;
                 }
             }
 
@@ -113,10 +138,10 @@ public class MainActivity extends AppCompatActivity implements BeaconConsumer {
         this.beaconManager = BeaconManager.getInstanceForApplication(this);
         this.beaconManager.getBeaconParsers().add(new BeaconParser(). setBeaconLayout("m:2-3=0215,i:4-19,i:20-21,i:22-23,p:24-24"));
         this.beaconManager.bind(this);
-        beaconManager.setBackgroundScanPeriod(200);
-        beaconManager.setForegroundScanPeriod(200);
-        beaconManager.setBackgroundBetweenScanPeriod(300);
-        beaconManager.setForegroundBetweenScanPeriod(300);
+        beaconManager.setBackgroundScanPeriod(400);
+        beaconManager.setForegroundScanPeriod(400);
+        beaconManager.setBackgroundBetweenScanPeriod(500);
+        beaconManager.setForegroundBetweenScanPeriod(500);
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             if (this.checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
@@ -160,26 +185,28 @@ public class MainActivity extends AppCompatActivity implements BeaconConsumer {
             @RequiresApi(api = Build.VERSION_CODES.JELLY_BEAN_MR2)
             @Override
             public void didRangeBeaconsInRegion(Collection<Beacon> beacons, Region region) {
-                if (beacons.size() > 0) {
-                    //beaconList.clear();
-                    for(Iterator<Beacon> iterator = beacons.iterator(); iterator.hasNext();) {
-                        Beacon tempBeacon = iterator.next();
-                        if (tempBeacon.getId1().toString().equals("b9407f30-f5f8-466e-aff9-25556b57fd6e") || tempBeacon.getId1().toString().equals("b9407f30-f5f8-466e-aff9-25556b57fd6f")) {
-                            //beaconList.add(tempBeacon.getId1().toString());
-                            if (tempBeacon.getDistance() < 1.8411248985355725)
-                            {
-                                count += 1;
-                                beaconList.add(0, "OPEN: " + count);
-                                writeToPi(tempBeacon.getId2().toString(), tempBeacon.getId3().toString());
+                if (onOff)
+                {
+                    if (beacons.size() > 0) {
+                        //beaconList.clear();
+                        for (Iterator<Beacon> iterator = beacons.iterator(); iterator.hasNext(); ) {
+                            Beacon tempBeacon = iterator.next();
+                            if (tempBeacon.getId1().toString().equals("b9407f30-f5f8-466e-aff9-25556b57fd6e") || tempBeacon.getId1().toString().equals("b9407f30-f5f8-466e-aff9-25556b57fd6f")) {
+                                //beaconList.add(tempBeacon.getId1().toString());
+                                if (tempBeacon.getDistance() < 2.0) {
+                                    count += 1;
+                                    beaconList.add(0, "OPEN: " + count);
+                                    writeToPi(tempBeacon.getId2().toString(), tempBeacon.getId3().toString());
+                                }
                             }
                         }
+                        runOnUiThread(new Runnable() {
+                            @Override
+                            public void run() {
+                                adapter.notifyDataSetChanged();
+                            }
+                        });
                     }
-                    runOnUiThread(new Runnable() {
-                        @Override
-                        public void run() {
-                            adapter.notifyDataSetChanged();
-                        }
-                    });
                 }
             }
         });
@@ -202,6 +229,20 @@ public class MainActivity extends AppCompatActivity implements BeaconConsumer {
         majorMinor = "D304DBD9-6FDC-4BF3-A617-E015" + major + minor;
       //final  UUID serviceUUID = UUID.fromString(majorMinor);
      //   UUID characteristicUUID = UUID.fromString("5099CBC8-A71F-4292-8158-BF4F25AE9948");
+
+
+//
+//
+//
+//
+//        Intent gattServiceIntent = new Intent(this, BluetoothLeService.class);
+//        bindService(gattServiceIntent, mServiceConnection, BIND_AUTO_CREATE);
+//
+//
+//        if (mBluetoothLeService != null) {
+//            mBluetoothLeService.writeCustomCharacteristic(0xAA);
+//        }
+//
 
 
             scanLeDevice(true);
@@ -268,10 +309,7 @@ public class MainActivity extends AppCompatActivity implements BeaconConsumer {
 
         @RequiresApi(api = Build.VERSION_CODES.JELLY_BEAN_MR2)
         public void addDevice(final BluetoothDevice device) {
-            if(!mLeDevices.contains(device)) {
-                mLeDevices.add(device);
-                String name = device.getName();
-                //System.out.print(name);
+
                 if (device.getName() != null) {
 
                     if (device.getName().equals("PORTAL")) {
@@ -280,7 +318,7 @@ public class MainActivity extends AppCompatActivity implements BeaconConsumer {
 
                     }
                 }
-            }
+
         }
 
         public BluetoothDevice getDevice(int position) {
@@ -346,16 +384,29 @@ public class MainActivity extends AppCompatActivity implements BeaconConsumer {
                 System.out.println("service null"); return;
             }
 
+
             BluetoothGattCharacteristic characteristic = service.getCharacteristic(UUID.fromString("5099CBC8-A71F-4292-8158-BF4F25AE9948"));
             characteristic.setWriteType(BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE);
 
             if (characteristic == null) {
                 System.out.println("characteristic null"); return;
             }
-            characteristic.setValue(" 0xAA");
-            gatt.writeCharacteristic(characteristic);
+            characteristic.setValue("0xAA");
+
             //System.out.println("Write Status: " + status2);
 
+//            for (int i = 0; i < 3; i++)
+//            {
+                if (onOff) {
+                    gatt.writeCharacteristic(characteristic);
+                    //mBluetoothLeService.writeCustomCharacteristic(0xAA);
+                    try {
+                        TimeUnit.MILLISECONDS.sleep(1550);
+                    } catch (InterruptedException e) {
+                        e.printStackTrace();
+                    }
+                }
+            //}
 
         }
     };
