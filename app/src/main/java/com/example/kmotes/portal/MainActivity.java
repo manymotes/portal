@@ -65,36 +65,16 @@ public class MainActivity extends AppCompatActivity implements BeaconConsumer {
     private Handler mHandler;
     private boolean mScanning = true;
     // Stops scanning after 1 seconds.
-    private static final long SCAN_PERIOD = 700;
+    private static final long SCAN_PERIOD = 5900;
     private BluetoothLeService mBluetoothLeService;
     private ArrayList<BluetoothDevice> mLeDevices;
     private String majorMinor;
     private BluetoothGatt bluetoothGatt;
     private Boolean onOff = true;
+    private Boolean inRange = false;
 
 
 
-    private final ServiceConnection mServiceConnection = new ServiceConnection() {
-
-
-
-        @RequiresApi(api = Build.VERSION_CODES.JELLY_BEAN_MR2)
-        @Override
-        public void onServiceConnected(ComponentName componentName, IBinder service) {
-            mBluetoothLeService = ((BluetoothLeService.LocalBinder) service).getService();
-            if (!mBluetoothLeService.initialize()) {
-                Log.e(TAG, "Unable to initialize Bluetooth");
-                finish();
-            }
-            // Automatically connects to the device upon successful start-up initialization.
-            mBluetoothLeService.connect(mDeviceAddress);
-        }
-
-        @Override
-        public void onServiceDisconnected(ComponentName componentName) {
-            mBluetoothLeService = null;
-        }
-    };
 
 
     @RequiresApi(api = Build.VERSION_CODES.JELLY_BEAN_MR2)
@@ -138,10 +118,10 @@ public class MainActivity extends AppCompatActivity implements BeaconConsumer {
         this.beaconManager = BeaconManager.getInstanceForApplication(this);
         this.beaconManager.getBeaconParsers().add(new BeaconParser(). setBeaconLayout("m:2-3=0215,i:4-19,i:20-21,i:22-23,p:24-24"));
         this.beaconManager.bind(this);
-        beaconManager.setBackgroundScanPeriod(400);
-        beaconManager.setForegroundScanPeriod(400);
-        beaconManager.setBackgroundBetweenScanPeriod(500);
-        beaconManager.setForegroundBetweenScanPeriod(500);
+        beaconManager.setBackgroundScanPeriod(1);
+        beaconManager.setForegroundScanPeriod(1);
+        beaconManager.setBackgroundBetweenScanPeriod(5900);
+        beaconManager.setForegroundBetweenScanPeriod(5900);
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             if (this.checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
@@ -193,10 +173,14 @@ public class MainActivity extends AppCompatActivity implements BeaconConsumer {
                             Beacon tempBeacon = iterator.next();
                             if (tempBeacon.getId1().toString().equals("b9407f30-f5f8-466e-aff9-25556b57fd6e") || tempBeacon.getId1().toString().equals("b9407f30-f5f8-466e-aff9-25556b57fd6f")) {
                                 //beaconList.add(tempBeacon.getId1().toString());
-                                if (tempBeacon.getDistance() < 2.0) {
+                                if (tempBeacon.getDistance() < 1.1) {
                                     count += 1;
-                                    beaconList.add(0, "OPEN: " + count);
+                                    //beaconList.add(0, "OPEN: " + count);
+                                    inRange = true;
                                     writeToPi(tempBeacon.getId2().toString(), tempBeacon.getId3().toString());
+                                }
+                                else {
+                                    inRange = false;
                                 }
                             }
                         }
@@ -378,6 +362,7 @@ public class MainActivity extends AppCompatActivity implements BeaconConsumer {
         public void onServicesDiscovered(BluetoothGatt gatt, int status) {
 
             //Now we can start reading/writing characteristics
+            if (onOff && inRange) {
 
             BluetoothGattService service = gatt.getService(UUID.fromString(majorMinor));
             if (service == null) {
@@ -393,20 +378,16 @@ public class MainActivity extends AppCompatActivity implements BeaconConsumer {
             }
             characteristic.setValue("0xAA");
 
-            //System.out.println("Write Status: " + status2);
 
-//            for (int i = 0; i < 3; i++)
-//            {
-                if (onOff) {
                     gatt.writeCharacteristic(characteristic);
                     //mBluetoothLeService.writeCustomCharacteristic(0xAA);
-                    try {
-                        TimeUnit.MILLISECONDS.sleep(1550);
-                    } catch (InterruptedException e) {
-                        e.printStackTrace();
-                    }
+//                    try {
+//                        TimeUnit.MILLISECONDS.sleep(1643);
+//                    } catch (InterruptedException e) {
+//                        e.printStackTrace();
+//                    }
                 }
-            //}
+
 
         }
     };
