@@ -2,6 +2,7 @@ package com.example.kmotes.portal;
 
 
 import android.Manifest;
+import android.app.Activity;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothGatt;
@@ -53,8 +54,6 @@ import java.util.concurrent.TimeUnit;
 public class MainActivity extends AppCompatActivity implements BeaconConsumer {
 
     private static final String TAG = "BEACON_PROJECT";
-    public static final String mDeviceAddress = "B8:27:EB:42:D6:B5";
-    private static final int REQUEST_ENABLE_BT = 1;
     private ArrayList<String> beaconList;
     private ListView beaconListView;
     private ArrayAdapter<String> adapter;
@@ -64,15 +63,13 @@ public class MainActivity extends AppCompatActivity implements BeaconConsumer {
     private LeDeviceListAdapter mLeDeviceListAdapter;
     private Handler mHandler;
     private boolean mScanning = true;
-    // Stops scanning after 1 seconds.
-    private static final long SCAN_PERIOD = 5900;
-    private BluetoothLeService mBluetoothLeService;
+    private static final long SCAN_PERIOD = 9000;
     private ArrayList<BluetoothDevice> mLeDevices;
     private String majorMinor;
-    private BluetoothGatt bluetoothGatt;
     private Boolean onOff = true;
     private Boolean inRange = false;
     private Boolean isWriting = false;
+    private Activity mainActivity;
 
 
 
@@ -81,6 +78,7 @@ public class MainActivity extends AppCompatActivity implements BeaconConsumer {
     @RequiresApi(api = Build.VERSION_CODES.JELLY_BEAN_MR2)
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        mainActivity = this;
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
@@ -119,10 +117,10 @@ public class MainActivity extends AppCompatActivity implements BeaconConsumer {
         this.beaconManager = BeaconManager.getInstanceForApplication(this);
         this.beaconManager.getBeaconParsers().add(new BeaconParser(). setBeaconLayout("m:2-3=0215,i:4-19,i:20-21,i:22-23,p:24-24"));
         this.beaconManager.bind(this);
-        beaconManager.setBackgroundScanPeriod(1);
-        beaconManager.setForegroundScanPeriod(1);
-        beaconManager.setBackgroundBetweenScanPeriod(3000);
-        beaconManager.setForegroundBetweenScanPeriod(3000);
+        beaconManager.setBackgroundScanPeriod(3000);
+        beaconManager.setForegroundScanPeriod(3000);
+        beaconManager.setBackgroundBetweenScanPeriod(100);
+        beaconManager.setForegroundBetweenScanPeriod(100);
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             if (this.checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
@@ -174,11 +172,13 @@ public class MainActivity extends AppCompatActivity implements BeaconConsumer {
                             Beacon tempBeacon = iterator.next();
                             if (tempBeacon.getId1().toString().equals("b9407f30-f5f8-466e-aff9-25556b57fd6e") || tempBeacon.getId1().toString().equals("b9407f30-f5f8-466e-aff9-25556b57fd6f")) {
                                 //beaconList.add(tempBeacon.getId1().toString());
-                                if (tempBeacon.getDistance() < .3) {
+                                if (tempBeacon.getDistance() < 3.3) {
                                     count += 1;
                                     //beaconList.add(0, "OPEN: " + count);
                                     inRange = true;
-                                    writeToPi(tempBeacon.getId2().toString(), tempBeacon.getId3().toString());
+                                    if (!isWriting) {
+                                        writeToPi(tempBeacon.getId2().toString(), tempBeacon.getId3().toString());
+                                    }
                                 }
                                 else {
                                     inRange = false;
@@ -209,28 +209,28 @@ public class MainActivity extends AppCompatActivity implements BeaconConsumer {
 
     @RequiresApi(api = Build.VERSION_CODES.JELLY_BEAN_MR2)
     public void writeToPi(String major, String minor) {
+        if (!isWriting) {
+            major = intToHex(major);
+            minor = intToHex(minor);
+            majorMinor = "D304DBD9-6FDC-4BF3-A617-E015" + major + minor;
+          //final  UUID serviceUUID = UUID.fromString(majorMinor);
+         //   UUID characteristicUUID = UUID.fromString("5099CBC8-A71F-4292-8158-BF4F25AE9948");
 
-        major = intToHex(major);
-        minor = intToHex(minor);
-        majorMinor = "D304DBD9-6FDC-4BF3-A617-E015" + major + minor;
-      //final  UUID serviceUUID = UUID.fromString(majorMinor);
-     //   UUID characteristicUUID = UUID.fromString("5099CBC8-A71F-4292-8158-BF4F25AE9948");
+
+    //
+    //
+    //
+    //
+    //        Intent gattServiceIntent = new Intent(this, BluetoothLeService.class);
+    //        bindService(gattServiceIntent, mServiceConnection, BIND_AUTO_CREATE);
+    //
+    //
+    //        if (mBluetoothLeService != null) {
+    //            mBluetoothLeService.writeCustomCharacteristic(0xAA);
+    //        }
+//
 
 
-//
-//
-//
-//
-//        Intent gattServiceIntent = new Intent(this, BluetoothLeService.class);
-//        bindService(gattServiceIntent, mServiceConnection, BIND_AUTO_CREATE);
-//
-//
-//        if (mBluetoothLeService != null) {
-//            mBluetoothLeService.writeCustomCharacteristic(0xAA);
-//        }
-//
-
-            if (!isWriting) {
                 scanLeDevice(true);
             }
 
@@ -278,8 +278,6 @@ public class MainActivity extends AppCompatActivity implements BeaconConsumer {
                                     mLeDeviceListAdapter.addDevice(device);
                                     mLeDeviceListAdapter.notifyDataSetChanged();
                                 }
-
-
                     });
                 }
             };
@@ -356,6 +354,14 @@ public class MainActivity extends AppCompatActivity implements BeaconConsumer {
                     && newState == BluetoothProfile.STATE_DISCONNECTED) {
 
                 //Handle a disconnect event
+                System.out.print("disconnect");
+                setContentView(R.layout.activity_main);
+                final AlertDialog.Builder builder = new AlertDialog.Builder(mainActivity);
+                builder.setTitle("Bluetooth disconnected");
+                builder.setMessage("Please turn Bluetooth on and restart the app");
+                builder.setPositiveButton(android.R.string.ok, null);
+
+                builder.show();
 
             }
         }
@@ -367,7 +373,7 @@ public class MainActivity extends AppCompatActivity implements BeaconConsumer {
             //Now we can start reading/writing characteristics
             if (onOff && inRange && !isWriting) {
 
-            BluetoothGattService service = gatt.getService(UUID.fromString("D304DBD9-6FDC-4BF3-A617-E01500000003"));
+            BluetoothGattService service = gatt.getService(UUID.fromString(majorMinor));
             if (service == null) {
                 System.out.println("service null"); return;
             }
@@ -385,7 +391,7 @@ public class MainActivity extends AppCompatActivity implements BeaconConsumer {
                     gatt.writeCharacteristic(characteristic);
                     //mBluetoothLeService.writeCustomCharacteristic(0xAA);
                     try {
-                        TimeUnit.MILLISECONDS.sleep(1243);
+                        TimeUnit.MILLISECONDS.sleep(1050);
                         isWriting = false;
                     } catch (InterruptedException e) {
                         isWriting = false;
@@ -414,11 +420,11 @@ public class MainActivity extends AppCompatActivity implements BeaconConsumer {
 
 
 }
-
-to do
-    increase ibeacon scan time by a lot and test, als warap around that with iswriting boolean.
-
-then handle two pis at once
+//
+//to do
+//    increase ibeacon scan time by a lot and test, als warap around that with iswriting boolean.
+//
+//then handle two pis at once
 
 
 
