@@ -72,6 +72,7 @@ public class MainActivity extends AppCompatActivity implements BeaconConsumer {
     private BluetoothGatt bluetoothGatt;
     private Boolean onOff = true;
     private Boolean inRange = false;
+    private Boolean isWriting = false;
 
 
 
@@ -120,8 +121,8 @@ public class MainActivity extends AppCompatActivity implements BeaconConsumer {
         this.beaconManager.bind(this);
         beaconManager.setBackgroundScanPeriod(1);
         beaconManager.setForegroundScanPeriod(1);
-        beaconManager.setBackgroundBetweenScanPeriod(5900);
-        beaconManager.setForegroundBetweenScanPeriod(5900);
+        beaconManager.setBackgroundBetweenScanPeriod(3000);
+        beaconManager.setForegroundBetweenScanPeriod(3000);
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             if (this.checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
@@ -173,7 +174,7 @@ public class MainActivity extends AppCompatActivity implements BeaconConsumer {
                             Beacon tempBeacon = iterator.next();
                             if (tempBeacon.getId1().toString().equals("b9407f30-f5f8-466e-aff9-25556b57fd6e") || tempBeacon.getId1().toString().equals("b9407f30-f5f8-466e-aff9-25556b57fd6f")) {
                                 //beaconList.add(tempBeacon.getId1().toString());
-                                if (tempBeacon.getDistance() < 1.1) {
+                                if (tempBeacon.getDistance() < .3) {
                                     count += 1;
                                     //beaconList.add(0, "OPEN: " + count);
                                     inRange = true;
@@ -181,6 +182,7 @@ public class MainActivity extends AppCompatActivity implements BeaconConsumer {
                                 }
                                 else {
                                     inRange = false;
+                                    isWriting = false;
                                 }
                             }
                         }
@@ -208,8 +210,8 @@ public class MainActivity extends AppCompatActivity implements BeaconConsumer {
     @RequiresApi(api = Build.VERSION_CODES.JELLY_BEAN_MR2)
     public void writeToPi(String major, String minor) {
 
-        major = intToBinary(Integer.valueOf(major), 4).toString();
-        minor = intToBinary(Integer.valueOf(minor), 4).toString();
+        major = intToHex(major);
+        minor = intToHex(minor);
         majorMinor = "D304DBD9-6FDC-4BF3-A617-E015" + major + minor;
       //final  UUID serviceUUID = UUID.fromString(majorMinor);
      //   UUID characteristicUUID = UUID.fromString("5099CBC8-A71F-4292-8158-BF4F25AE9948");
@@ -228,8 +230,9 @@ public class MainActivity extends AppCompatActivity implements BeaconConsumer {
 //        }
 //
 
-
-            scanLeDevice(true);
+            if (!isWriting) {
+                scanLeDevice(true);
+            }
 
 
 
@@ -362,9 +365,9 @@ public class MainActivity extends AppCompatActivity implements BeaconConsumer {
         public void onServicesDiscovered(BluetoothGatt gatt, int status) {
 
             //Now we can start reading/writing characteristics
-            if (onOff && inRange) {
+            if (onOff && inRange && !isWriting) {
 
-            BluetoothGattService service = gatt.getService(UUID.fromString(majorMinor));
+            BluetoothGattService service = gatt.getService(UUID.fromString("D304DBD9-6FDC-4BF3-A617-E01500000003"));
             if (service == null) {
                 System.out.println("service null"); return;
             }
@@ -378,14 +381,17 @@ public class MainActivity extends AppCompatActivity implements BeaconConsumer {
             }
             characteristic.setValue("0xAA");
 
-
+                    isWriting = true;
                     gatt.writeCharacteristic(characteristic);
                     //mBluetoothLeService.writeCustomCharacteristic(0xAA);
-//                    try {
-//                        TimeUnit.MILLISECONDS.sleep(1643);
-//                    } catch (InterruptedException e) {
-//                        e.printStackTrace();
-//                    }
+                    try {
+                        TimeUnit.MILLISECONDS.sleep(1243);
+                        isWriting = false;
+                    } catch (InterruptedException e) {
+                        isWriting = false;
+                        e.printStackTrace();
+
+                    }
                 }
 
 
@@ -393,26 +399,26 @@ public class MainActivity extends AppCompatActivity implements BeaconConsumer {
     };
 
 
-    public static String intToBinary (int n, int numOfBits) {
-        String binary = "";
-        for(int i = 0; i < numOfBits; ++i, n/=2) {
-            switch (n % 2) {
-                case 0:
-                    binary = "0" + binary;
-                    break;
-                case 1:
-                    binary = "1" + binary;
-                    break;
-            }
+    public static String intToHex (String n) {
+        int addon = 4 - n.length();
+        String hex = "";
+        for (int i = 0; i < addon; i ++){
+            hex+= "0";
         }
+        hex += n;
 
-        return binary;
+        return hex;
     }
 
 
 
 
 }
+
+to do
+    increase ibeacon scan time by a lot and test, als warap around that with iswriting boolean.
+
+then handle two pis at once
 
 
 
