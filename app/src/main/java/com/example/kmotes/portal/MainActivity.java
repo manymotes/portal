@@ -48,6 +48,7 @@ import org.altbeacon.beacon.Region;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Iterator;
+import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
@@ -65,11 +66,11 @@ public class MainActivity extends AppCompatActivity implements BeaconConsumer {
     private boolean mScanning = true;
     private static final long SCAN_PERIOD = 9000;
     private ArrayList<BluetoothDevice> mLeDevices;
-    private String majorMinor;
     private Boolean onOff = true;
     private Boolean inRange = false;
     private Boolean isWriting = false;
     private Activity mainActivity;
+    private List<String> globalajorMinors = new ArrayList<String>();
 
 
 
@@ -154,10 +155,6 @@ public class MainActivity extends AppCompatActivity implements BeaconConsumer {
         this.beaconManager.unbind(this);
     }
 
-    public void searchIbeacon() {
-
-    }
-
     @Override
     public void onBeaconServiceConnect() {
         this.beaconManager.setRangeNotifier(new RangeNotifier() {
@@ -166,8 +163,9 @@ public class MainActivity extends AppCompatActivity implements BeaconConsumer {
             public void didRangeBeaconsInRegion(Collection<Beacon> beacons, Region region) {
                 if (onOff)
                 {
+
                     if (beacons.size() > 0) {
-                        //beaconList.clear();
+                        List<String> majorMinors = new ArrayList<String>();
                         for (Iterator<Beacon> iterator = beacons.iterator(); iterator.hasNext(); ) {
                             Beacon tempBeacon = iterator.next();
                             if (tempBeacon.getId1().toString().equals("b9407f30-f5f8-466e-aff9-25556b57fd6e") || tempBeacon.getId1().toString().equals("b9407f30-f5f8-466e-aff9-25556b57fd6f")) {
@@ -177,7 +175,9 @@ public class MainActivity extends AppCompatActivity implements BeaconConsumer {
                                     //beaconList.add(0, "OPEN: " + count);
                                     inRange = true;
                                     if (!isWriting) {
-                                        writeToPi(tempBeacon.getId2().toString(), tempBeacon.getId3().toString());
+                                        String tempMajorMinor = intToHex(tempBeacon.getId2().toString()) + intToHex(tempBeacon.getId3().toString());
+                                        majorMinors.add(tempMajorMinor);
+                                        //writeToPi(tempBeacon.getId2().toString(), tempBeacon.getId3().toString());
                                     }
                                 }
                                 else {
@@ -192,7 +192,11 @@ public class MainActivity extends AppCompatActivity implements BeaconConsumer {
                                 adapter.notifyDataSetChanged();
                             }
                         });
+                        if (!isWriting) {
+                            writeToPi(majorMinors);
+                        }
                     }
+
                 }
             }
         });
@@ -208,34 +212,11 @@ public class MainActivity extends AppCompatActivity implements BeaconConsumer {
 
 
     @RequiresApi(api = Build.VERSION_CODES.JELLY_BEAN_MR2)
-    public void writeToPi(String major, String minor) {
+    public void writeToPi(List<String> majorMinors) {
         if (!isWriting) {
-            major = intToHex(major);
-            minor = intToHex(minor);
-            majorMinor = "D304DBD9-6FDC-4BF3-A617-E015" + major + minor;
-          //final  UUID serviceUUID = UUID.fromString(majorMinor);
-         //   UUID characteristicUUID = UUID.fromString("5099CBC8-A71F-4292-8158-BF4F25AE9948");
-
-
-    //
-    //
-    //
-    //
-    //        Intent gattServiceIntent = new Intent(this, BluetoothLeService.class);
-    //        bindService(gattServiceIntent, mServiceConnection, BIND_AUTO_CREATE);
-    //
-    //
-    //        if (mBluetoothLeService != null) {
-    //            mBluetoothLeService.writeCustomCharacteristic(0xAA);
-    //        }
-//
-
-
-                scanLeDevice(true);
-            }
-
-
-
+            globalajorMinors = majorMinors;
+            scanLeDevice(true);
+        }
      //end writeToPI
     }
 
@@ -274,16 +255,17 @@ public class MainActivity extends AppCompatActivity implements BeaconConsumer {
                         @RequiresApi(api = Build.VERSION_CODES.JELLY_BEAN_MR2)
                         @Override
                         public void run() {
-
-                                    mLeDeviceListAdapter.addDevice(device);
-                                    mLeDeviceListAdapter.notifyDataSetChanged();
+                                    if (!isWriting) {
+                                        mLeDeviceListAdapter.addDevice(device);
+                                        mLeDeviceListAdapter.notifyDataSetChanged();
+                                    }
                                 }
                     });
                 }
             };
 
-    // Adapter for holding devices found through scanning.
-    private class LeDeviceListAdapter extends BaseAdapter {
+        // Adapter for holding devices found through scanning.
+        private class LeDeviceListAdapter extends BaseAdapter {
 
         private LayoutInflater mInflator;
 
@@ -372,33 +354,42 @@ public class MainActivity extends AppCompatActivity implements BeaconConsumer {
 
             //Now we can start reading/writing characteristics
             if (onOff && inRange && !isWriting) {
+                isWriting = true;
+                for (int i = 0; i < globalajorMinors.size(); i++) {
 
-            BluetoothGattService service = gatt.getService(UUID.fromString(majorMinor));
-            if (service == null) {
-                System.out.println("service null"); return;
-            }
-
-
-            BluetoothGattCharacteristic characteristic = service.getCharacteristic(UUID.fromString("5099CBC8-A71F-4292-8158-BF4F25AE9948"));
-            characteristic.setWriteType(BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE);
-
-            if (characteristic == null) {
-                System.out.println("characteristic null"); return;
-            }
-            characteristic.setValue("0xAA");
-
-                    isWriting = true;
-                    gatt.writeCharacteristic(characteristic);
-                    //mBluetoothLeService.writeCustomCharacteristic(0xAA);
-                    try {
-                        TimeUnit.MILLISECONDS.sleep(1050);
+                    String majorMinor = "D304DBD9-6FDC-4BF3-A617-E015" + globalajorMinors.get(i);
+                    BluetoothGattService service = gatt.getService(UUID.fromString(majorMinor));
+                    if (service == null) {
+                        System.out.println("service null");
                         isWriting = false;
-                    } catch (InterruptedException e) {
-                        isWriting = false;
-                        e.printStackTrace();
+
+                        //return;
+                    }
+                    else {
+                        BluetoothGattCharacteristic characteristic = service.getCharacteristic(UUID.fromString("5099CBC8-A71F-4292-8158-BF4F25AE9948"));
+                        characteristic.setWriteType(BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE);
+
+                        if (characteristic == null) {
+                            System.out.println("characteristic null");
+                            return;
+                        }
+                        characteristic.setValue("GPIOON");
+
+                        gatt.writeCharacteristic(characteristic);
+                        //mBluetoothLeService.writeCustomCharacteristic(0xAA);
+                        try {
+                            TimeUnit.MILLISECONDS.sleep(1050);
+                            isWriting = false;
+                        } catch (InterruptedException e) {
+                            isWriting = false;
+                            e.printStackTrace();
+
+                        }
 
                     }
                 }
+                isWriting = false;
+            }
 
 
         }
@@ -409,7 +400,7 @@ public class MainActivity extends AppCompatActivity implements BeaconConsumer {
         int addon = 4 - n.length();
         String hex = "";
         for (int i = 0; i < addon; i ++){
-            hex+= "0";
+            hex += "0";
         }
         hex += n;
 
