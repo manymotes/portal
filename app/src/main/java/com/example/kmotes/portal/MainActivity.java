@@ -20,6 +20,7 @@ import android.content.pm.PackageManager;
 import android.os.Build;
 import android.os.Handler;
 import android.os.IBinder;
+import android.os.Looper;
 import android.os.RemoteException;
 import android.support.annotation.RequiresApi;
 import android.support.v7.app.AlertDialog;
@@ -36,6 +37,8 @@ import android.widget.CompoundButton;
 import android.widget.ListView;
 import android.widget.TextView;
 import android.widget.Toast;
+import android.os.Looper;
+import android.os.Handler;
 
 import org.altbeacon.beacon.Beacon;
 import org.altbeacon.beacon.BeaconConsumer;
@@ -45,6 +48,7 @@ import org.altbeacon.beacon.RangeNotifier;
 import org.altbeacon.beacon.Region;
 
 
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Iterator;
@@ -64,13 +68,40 @@ public class MainActivity extends AppCompatActivity implements BeaconConsumer {
     private LeDeviceListAdapter mLeDeviceListAdapter;
     private Handler mHandler;
     private boolean mScanning = true;
-    private static final long SCAN_PERIOD = 9000;
+    private static final long SCAN_PERIOD = 4000;
     private ArrayList<BluetoothDevice> mLeDevices;
     private Boolean onOff = true;
     private Boolean inRange = false;
     private Boolean isWriting = false;
     private Activity mainActivity;
     private List<String> globalajorMinors = new ArrayList<String>();
+    private LooperThread looperThread1 = new LooperThread();
+    private boolean threadIsBusy = false;
+
+
+
+    public class LooperThread extends Thread {
+        public Handler handler;
+        public void run(){
+            Looper.prepare();
+            handler = new Handler();
+            //Looper.loop();
+
+                 //if you want to stop thread you can create you own exception, throw it and catch. Example:
+                 try
+                 {
+                       Looper.loop();
+                 } catch(Exception e){
+                    System.out.print("exception e caught");
+                 }
+////                 And now thread is stopping (and not handling runnables from handler.post()
+////                 In other thread write this:
+//                 thread.handler.post(new Runnable(){
+//                          throw new MyException(); // And now exception will be caught and thread will be stopping.
+//                 });
+
+        }
+    }
 
 
 
@@ -192,7 +223,7 @@ public class MainActivity extends AppCompatActivity implements BeaconConsumer {
                                 adapter.notifyDataSetChanged();
                             }
                         });
-                        if (!isWriting) {
+                        if (!isWriting && !threadIsBusy) {
                             writeToPi(majorMinors);
                         }
                     }
@@ -213,9 +244,15 @@ public class MainActivity extends AppCompatActivity implements BeaconConsumer {
 
     @RequiresApi(api = Build.VERSION_CODES.JELLY_BEAN_MR2)
     public void writeToPi(List<String> majorMinors) {
-        if (!isWriting) {
+        if (!isWriting && !threadIsBusy) {
             globalajorMinors = majorMinors;
-            scanLeDevice(true);
+            scanLeDevice(!threadIsBusy);
+            try {
+                TimeUnit.MILLISECONDS.sleep(3000);
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+
+            }
         }
      //end writeToPI
     }
@@ -248,23 +285,31 @@ public class MainActivity extends AppCompatActivity implements BeaconConsumer {
     // Device scan callback.
     private BluetoothAdapter.LeScanCallback mLeScanCallback =
             new BluetoothAdapter.LeScanCallback() {
-
+                private LooperThread thread = looperThread1;
+                {
+                    thread.start(); // start thread once
+                }
                 @Override
-                public void onLeScan(final BluetoothDevice device, int rssi, byte[] scanRecord) {
-                    runOnUiThread(new Runnable() {
-                        @RequiresApi(api = Build.VERSION_CODES.JELLY_BEAN_MR2)
-                        @Override
-                        public void run() {
-                                    if (!isWriting) {
-                                        mLeDeviceListAdapter.addDevice(device);
-                                        mLeDeviceListAdapter.notifyDataSetChanged();
-                                    }
+                public void onLeScan(final BluetoothDevice device, final int rssi, byte[] scanRecord) {
+                    if(thread.handler != null && !threadIsBusy)
+                        threadIsBusy = true;
+                        thread.handler.post(new Runnable() {
+                            @RequiresApi(api = Build.VERSION_CODES.JELLY_BEAN_MR2)
+                            @Override
+                            public void run() {
+                                // And now this code is running on seperate thread. (Not creating new)
+                                if (!isWriting) {
+                                    mLeDeviceListAdapter.addDevice(device);
+                                    mLeDeviceListAdapter.notifyDataSetChanged();
                                 }
-                    });
+                                Log.e("LeScanCallback", Thread.currentThread().getName());//Prints Thread-xxxx
+                            }
+                        });
                 }
             };
 
-        // Adapter for holding devices found through scanning.
+
+    // Adapter for holding devices found through scanning.
         private class LeDeviceListAdapter extends BaseAdapter {
 
         private LayoutInflater mInflator;
@@ -377,18 +422,12 @@ public class MainActivity extends AppCompatActivity implements BeaconConsumer {
 
                         gatt.writeCharacteristic(characteristic);
                         //mBluetoothLeService.writeCustomCharacteristic(0xAA);
-                        try {
-                            TimeUnit.MILLISECONDS.sleep(1050);
-                            isWriting = false;
-                        } catch (InterruptedException e) {
-                            isWriting = false;
-                            e.printStackTrace();
-
-                        }
+                        isWriting = false;
 
                     }
                 }
                 isWriting = false;
+                threadIsBusy = false;
             }
 
 
