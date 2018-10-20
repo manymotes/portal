@@ -21,6 +21,7 @@ import android.os.Build;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
+import android.os.ParcelUuid;
 import android.os.RemoteException;
 import android.support.annotation.RequiresApi;
 import android.support.v7.app.AlertDialog;
@@ -50,11 +51,18 @@ import org.altbeacon.beacon.Region;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Iterator;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
+
+import no.nordicsemi.android.support.v18.scanner.BluetoothLeScannerCompat;
+import no.nordicsemi.android.support.v18.scanner.ScanCallback;
+import no.nordicsemi.android.support.v18.scanner.ScanFilter;
+import no.nordicsemi.android.support.v18.scanner.ScanResult;
+import no.nordicsemi.android.support.v18.scanner.ScanSettings;
 
 public class MainActivity extends AppCompatActivity implements BeaconConsumer {
 
@@ -64,19 +72,15 @@ public class MainActivity extends AppCompatActivity implements BeaconConsumer {
     private ArrayAdapter<String> adapter;
     private BeaconManager beaconManager;
     int count = 0;
-    private BluetoothAdapter mBluetoothAdapter;
-    private LeDeviceListAdapter mLeDeviceListAdapter;
     private Handler mHandler;
     private boolean mScanning = true;
-    private static final long SCAN_PERIOD = 4000;
-    private ArrayList<BluetoothDevice> mLeDevices;
     private Boolean onOff = true;
-    private Boolean inRange = false;
-    private Boolean isWriting = false;
     private Activity mainActivity;
-    private List<String> globalajorMinors = new ArrayList<String>();
-    private LooperThread looperThread1 = new LooperThread();
-    private boolean threadIsBusy = false;
+    private Boolean scanning = false;
+    private List<String> majorMinorQueue = new ArrayList<>();
+    private BluetoothLeScannerCompat scanner;
+
+    private int queueSize = 0;
 
 
 
@@ -117,7 +121,7 @@ public class MainActivity extends AppCompatActivity implements BeaconConsumer {
         mHandler = new Handler();
         final BluetoothManager bluetoothManager =
                 (BluetoothManager) getSystemService(Context.BLUETOOTH_SERVICE);
-        mBluetoothAdapter = bluetoothManager.getAdapter();
+        BluetoothAdapter mBluetoothAdapter = bluetoothManager.getAdapter();
 
         SwitchCompat onOffSwitch = findViewById(R.id.on_off_switch);
         onOffSwitch.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
@@ -137,7 +141,6 @@ public class MainActivity extends AppCompatActivity implements BeaconConsumer {
 
         });
 
-        mLeDeviceListAdapter = new LeDeviceListAdapter();
 
 
         //start beacon code
@@ -149,10 +152,10 @@ public class MainActivity extends AppCompatActivity implements BeaconConsumer {
         this.beaconManager = BeaconManager.getInstanceForApplication(this);
         this.beaconManager.getBeaconParsers().add(new BeaconParser(). setBeaconLayout("m:2-3=0215,i:4-19,i:20-21,i:22-23,p:24-24"));
         this.beaconManager.bind(this);
-        beaconManager.setBackgroundScanPeriod(3000);
-        beaconManager.setForegroundScanPeriod(3000);
-        beaconManager.setBackgroundBetweenScanPeriod(100);
-        beaconManager.setForegroundBetweenScanPeriod(100);
+        beaconManager.setBackgroundScanPeriod(1000);
+        beaconManager.setForegroundScanPeriod(1000);
+        beaconManager.setBackgroundBetweenScanPeriod(1000);
+        beaconManager.setForegroundBetweenScanPeriod(1000);
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             if (this.checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
@@ -170,8 +173,6 @@ public class MainActivity extends AppCompatActivity implements BeaconConsumer {
                 builder.show();
             }
         }
-
-
         //end beacon code
     }
 
@@ -194,40 +195,36 @@ public class MainActivity extends AppCompatActivity implements BeaconConsumer {
             public void didRangeBeaconsInRegion(Collection<Beacon> beacons, Region region) {
                 if (onOff)
                 {
-
                     if (beacons.size() > 0) {
-                        List<String> majorMinors = new ArrayList<String>();
+                        majorMinorQueue.clear();
                         for (Iterator<Beacon> iterator = beacons.iterator(); iterator.hasNext(); ) {
                             Beacon tempBeacon = iterator.next();
                             if (tempBeacon.getId1().toString().equals("b9407f30-f5f8-466e-aff9-25556b57fd6e") || tempBeacon.getId1().toString().equals("b9407f30-f5f8-466e-aff9-25556b57fd6f")) {
                                 //beaconList.add(tempBeacon.getId1().toString());
-                                if (tempBeacon.getDistance() < 3.3) {
+                                if (tempBeacon.getDistance() < 1.9) {
                                     count += 1;
                                     //beaconList.add(0, "OPEN: " + count);
-                                    inRange = true;
-                                    if (!isWriting) {
-                                        String tempMajorMinor = intToHex(tempBeacon.getId2().toString()) + intToHex(tempBeacon.getId3().toString());
-                                        majorMinors.add(tempMajorMinor);
-                                        //writeToPi(tempBeacon.getId2().toString(), tempBeacon.getId3().toString());
-                                    }
+
+
+                                        String tempMajorMinor = formatInt(tempBeacon.getId2().toString()) + formatInt(tempBeacon.getId3().toString());
+                                        majorMinorQueue.add(tempMajorMinor);
+
                                 }
                                 else {
-                                    inRange = false;
-                                    isWriting = false;
                                 }
                             }
                         }
+
+                        //write to pies here
+                        writeToPi(majorMinorQueue);
+
                         runOnUiThread(new Runnable() {
                             @Override
                             public void run() {
                                 adapter.notifyDataSetChanged();
                             }
                         });
-                        if (!isWriting && !threadIsBusy) {
-                            writeToPi(majorMinors);
-                        }
                     }
-
                 }
             }
         });
@@ -238,131 +235,211 @@ public class MainActivity extends AppCompatActivity implements BeaconConsumer {
         }
     }
 
-
-
-
-
     @RequiresApi(api = Build.VERSION_CODES.JELLY_BEAN_MR2)
-    public void writeToPi(List<String> majorMinors) {
-        if (!isWriting && !threadIsBusy) {
-            globalajorMinors = majorMinors;
-            scanLeDevice(!threadIsBusy);
-            try {
-                TimeUnit.MILLISECONDS.sleep(3000);
-            } catch (InterruptedException e) {
-                e.printStackTrace();
+    public void writeToPi(List<String> queue) {
+                    if (scanner != null)
+                    {
+                        scanner.stopScan(mScanCallback);
+                    }
+                    scanner = BluetoothLeScannerCompat.getScanner();
 
-            }
-        }
+                    ScanSettings settings = new ScanSettings.Builder()
+                            .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
+                            .setReportDelay(1000)
+                            .build();
+                try {
+                    scanner.startScan(uuidFilters(queue), settings, mScanCallback);
+
+                    wait(1000);
+                } catch (Exception e) {}
+
+
      //end writeToPI
     }
 
-    @RequiresApi(api = Build.VERSION_CODES.JELLY_BEAN_MR2)
-    private void scanLeDevice(final boolean enable) {
+    private List<ScanFilter> uuidFilters(List<String> ids) {
+        scanning = true;
+        List<ScanFilter> toReturn = new ArrayList<>();
 
-        if (enable) {
-            // Stops scanning after a pre-defined scan period.
-            mHandler.postDelayed(new Runnable() {
-                @RequiresApi(api = Build.VERSION_CODES.JELLY_BEAN_MR2)
-                @Override
-                public void run() {
-                    mScanning = false;
-                    mBluetoothAdapter.stopLeScan(mLeScanCallback);
-                    invalidateOptionsMenu();
-                }
-            }, SCAN_PERIOD);
-
-            mScanning = true;
-            mBluetoothAdapter.startLeScan(mLeScanCallback);
-        } else {
-            mScanning = false;
-            mBluetoothAdapter.stopLeScan(mLeScanCallback);
+        for (int i  = 0; i < ids.size(); i++)
+        {
+            String toAdd = "D304DBD9-6FDC-4BF3-A617-E015" + ids.get(i);
+            ScanFilter scanFilter = new ScanFilter.Builder()
+                    .setServiceUuid(new ParcelUuid(UUID.fromString(toAdd))).build();
+            toReturn.add(scanFilter);
         }
-        invalidateOptionsMenu();
+        return  toReturn;
     }
+    private final ScanCallback mScanCallback = new ScanCallback() {
+        @Override
+        public void onScanResult(int callbackType, ScanResult result) {
+            // We scan with report delay > 0. This will never be called.
+        }
 
+        @Override
+        public void onBatchScanResults(List<ScanResult> results) {
+            if (!results.isEmpty()) {
+                for (int i = 0; i < results.size(); i++) {
+                    ScanResult result = results.get(i);
+                    BluetoothDevice device = result.getDevice();
+                    String deviceAddress = device.getAddress();
+                    // Device detected, we can automatically connect to it and stop the scan
+                    device.connectGatt(getApplicationContext(), true,new BluetoothGattCallback() {
 
-    // Device scan callback.
-    private BluetoothAdapter.LeScanCallback mLeScanCallback =
-            new BluetoothAdapter.LeScanCallback() {
-                private LooperThread thread = looperThread1;
-                {
-                    thread.start(); // start thread once
-                }
-                @Override
-                public void onLeScan(final BluetoothDevice device, final int rssi, byte[] scanRecord) {
-                    if(thread.handler != null && !threadIsBusy)
-                        threadIsBusy = true;
-                        thread.handler.post(new Runnable() {
-                            @RequiresApi(api = Build.VERSION_CODES.JELLY_BEAN_MR2)
-                            @Override
-                            public void run() {
-                                // And now this code is running on seperate thread. (Not creating new)
-                                if (!isWriting) {
-                                    mLeDeviceListAdapter.addDevice(device);
-                                    mLeDeviceListAdapter.notifyDataSetChanged();
-                                }
-                                Log.e("LeScanCallback", Thread.currentThread().getName());//Prints Thread-xxxx
+                        @RequiresApi(api = Build.VERSION_CODES.JELLY_BEAN_MR2)
+                        @Override
+                        public void onConnectionStateChange(BluetoothGatt gatt, int status, int newState) {
+                            //Connection established
+                            if (status == BluetoothGatt.GATT_SUCCESS
+                                    && newState == BluetoothProfile.STATE_CONNECTED) {
+                                //Discover services
+                                gatt.discoverServices();
+
+                            } else if (status == BluetoothGatt.GATT_SUCCESS
+                                    && newState == BluetoothProfile.STATE_DISCONNECTED) {
+
+                                //Handle a disconnect event
+                                System.out.print("disconnect");
+                                setContentView(R.layout.activity_main);
+                                final AlertDialog.Builder builder = new AlertDialog.Builder(mainActivity);
+                                builder.setTitle("Bluetooth disconnected");
+                                builder.setMessage("Please turn Bluetooth on and restart the app");
+                                builder.setPositiveButton(android.R.string.ok, null);
+
+                                builder.show();
+
                             }
-                        });
+                        }
+
+                        @RequiresApi(api = Build.VERSION_CODES.JELLY_BEAN_MR2)
+                        @Override
+                        public void onServicesDiscovered(BluetoothGatt gatt, int status) {
+
+                            //Now we can start reading/writing characteristics
+                                BluetoothGattService service = null;
+                                BluetoothGattService tempService;
+                                String serviceUsed = null;
+                                for (int i = 0; i < majorMinorQueue.size(); i ++)
+                                {
+                                    String toAdd = "D304DBD9-6FDC-4BF3-A617-E015" + majorMinorQueue.get(i);
+                                    tempService = gatt.getService(UUID.fromString(toAdd));
+                                    if (tempService != null)
+                                    {
+                                        service = tempService;
+                                        serviceUsed = toAdd;
+                                    }
+                                }
+                                if (service == null) {
+                                    System.out.println("service null");
+                                }
+                                else {
+                                    BluetoothGattCharacteristic characteristic = service.getCharacteristic(UUID.fromString("5099CBC8-A71F-4292-8158-BF4F25AE9948"));
+                                    characteristic.setWriteType(BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE);
+
+                                    if (characteristic == null) {
+                                        System.out.println("characteristic null");
+                                        return;
+                                    }
+                                    characteristic.setValue("GPIOON");
+                                    gatt.writeCharacteristic(characteristic);
+                                }
+
+
+
+                        }
+                    });
+                    try {
+                        wait(1000);
+                    } catch (Exception e) {}
                 }
-            };
 
-
-    // Adapter for holding devices found through scanning.
-        private class LeDeviceListAdapter extends BaseAdapter {
-
-        private LayoutInflater mInflator;
-
-        public LeDeviceListAdapter() {
-            super();
-            mLeDevices = new ArrayList<BluetoothDevice>();
-        }
-
-        @RequiresApi(api = Build.VERSION_CODES.JELLY_BEAN_MR2)
-        public void addDevice(final BluetoothDevice device) {
-
-                if (device.getName() != null) {
-
-                    if (device.getName().equals("PORTAL")) {
-
-                        device.connectGatt(getApplicationContext(), true, mGattCallback);
-
-                    }
-                }
-
-        }
-
-        public BluetoothDevice getDevice(int position) {
-            return mLeDevices.get(position);
-        }
-
-        public void clear() {
-            mLeDevices.clear();
+            }
         }
 
         @Override
-        public int getCount() {
-            return mLeDevices.size();
+        public void onScanFailed(int errorCode) {
+            // Scan error
         }
+    };
 
-        @Override
-        public Object getItem(int i) {
-            return mLeDevices.get(i);
-        }
+//    @RequiresApi(api = Build.VERSION_CODES.JELLY_BEAN_MR2)
+//    private void scanLeDevice(final boolean enable) {
+//
+//        if (enable) {
+//            // Stops scanning after a pre-defined scan period.
+//            mHandler.postDelayed(new Runnable() {
+//                @RequiresApi(api = Build.VERSION_CODES.JELLY_BEAN_MR2)
+//                @Override
+//                public void run() {
+//                    mScanning = false;
+//                    mBluetoothAdapter.stopLeScan(mLeScanCallback);
+//                    invalidateOptionsMenu();
+//                }
+//            }, SCAN_PERIOD);
+//
+//            mScanning = true;
+//            mBluetoothAdapter.startLeScan(mLeScanCallback);
+//        } else {
+//            mScanning = false;
+//            mBluetoothAdapter.stopLeScan(mLeScanCallback);
+//        }
+//        invalidateOptionsMenu();
+//    }
 
-        @Override
-        public long getItemId(int i) {
-            return i;
-        }
 
-        @Override
-        public View getView(int i, View view, ViewGroup viewGroup) {
+//    // Device scan callback.
+//    private BluetoothAdapter.LeScanCallback mLeScanCallback =
+//            new BluetoothAdapter.LeScanCallback() {
+//                private LooperThread thread = looperThread1;
+//                {
+//                    thread.start(); // start thread once
+//                }
+//                @Override
+//                public void onLeScan(final BluetoothDevice device, final int rssi, byte[] scanRecord) {
+//                    if(thread.handler != null && !threadIsBusy)
+//                        threadIsBusy = true;
+//                        thread.handler.post(new Runnable() {
+//                            @RequiresApi(api = Build.VERSION_CODES.JELLY_BEAN_MR2)
+//                            @Override
+//                            public void run() {
+//                                // And now this code is running on seperate thread. (Not creating new)
+//                                if (!isWriting) {
+//                                    mLeDeviceListAdapter.addDevice(device);
+//                                    mLeDeviceListAdapter.notifyDataSetChanged();
+//                                }
+//                                Log.e("LeScanCallback", Thread.currentThread().getName());//Prints Thread-xxxx
+//                            }
+//                        });
+//                }
+//            };
 
 
-            return null;
-        }
-    }
+//    // Adapter for holding devices found through scanning.
+//        private class LeDeviceListAdapter extends BaseAdapter {
+//
+//        private LayoutInflater mInflator;
+//
+//        public LeDeviceListAdapter() {
+//            super();
+//            mLeDevices = new ArrayList<BluetoothDevice>();
+//        }
+//
+//        @RequiresApi(api = Build.VERSION_CODES.JELLY_BEAN_MR2)
+//        public void addDevice(final BluetoothDevice device) {
+//
+//                if (device.getName() != null) {
+//
+//                    if (device.getName().equals("PORTAL")) {
+//
+//                        device.connectGatt(getApplicationContext(), true, mGattCallback);
+//
+//                    }
+//                }
+//
+//        }
+
+
+
 
 
     private BluetoothGattCallback mGattCallback = new BluetoothGattCallback() {
@@ -373,7 +450,6 @@ public class MainActivity extends AppCompatActivity implements BeaconConsumer {
             //Connection established
             if (status == BluetoothGatt.GATT_SUCCESS
                     && newState == BluetoothProfile.STATE_CONNECTED) {
-
                 //Discover services
                 gatt.discoverServices();
 
@@ -398,17 +474,23 @@ public class MainActivity extends AppCompatActivity implements BeaconConsumer {
         public void onServicesDiscovered(BluetoothGatt gatt, int status) {
 
             //Now we can start reading/writing characteristics
-            if (onOff && inRange && !isWriting) {
-                isWriting = true;
-                for (int i = 0; i < globalajorMinors.size(); i++) {
+            if (onOff) {
 
-                    String majorMinor = "D304DBD9-6FDC-4BF3-A617-E015" + globalajorMinors.get(i);
-                    BluetoothGattService service = gatt.getService(UUID.fromString(majorMinor));
+                    BluetoothGattService service = null;
+                    BluetoothGattService tempService;
+                    String serviceUsed = null;
+                    for (int i = 0; i < majorMinorQueue.size(); i ++)
+                    {
+                        String toAdd = "D304DBD9-6FDC-4BF3-A617-E015" + majorMinorQueue.get(i);
+                        tempService = gatt.getService(UUID.fromString(toAdd));
+                        if (tempService != null)
+                        {
+                            service = tempService;
+                            serviceUsed = toAdd;
+                        }
+                    }
                     if (service == null) {
                         System.out.println("service null");
-                        isWriting = false;
-
-                        //return;
                     }
                     else {
                         BluetoothGattCharacteristic characteristic = service.getCharacteristic(UUID.fromString("5099CBC8-A71F-4292-8158-BF4F25AE9948"));
@@ -419,23 +501,17 @@ public class MainActivity extends AppCompatActivity implements BeaconConsumer {
                             return;
                         }
                         characteristic.setValue("GPIOON");
-
                         gatt.writeCharacteristic(characteristic);
-                        //mBluetoothLeService.writeCustomCharacteristic(0xAA);
-                        isWriting = false;
-
                     }
-                }
-                isWriting = false;
-                threadIsBusy = false;
+
+
+
             }
-
-
         }
     };
 
 
-    public static String intToHex (String n) {
+    public static String formatInt (String n) {
         int addon = 4 - n.length();
         String hex = "";
         for (int i = 0; i < addon; i ++){
